@@ -1,44 +1,22 @@
 #!/usr/bin/env python
-"""
-An improved version of my Python-based gravity simulator, using Runge-Kutta
-4th order solution of the differential equations - coded during Xmas 2012.
-Happy holidays, everyone!
+"""Routines for running an n-body simulation.
 
-I've always been fascinated by space - ever since I read 'The Family of
-the Sun', when I was young. And I always wanted to simulate what I've read
-about Newton's gravity law, and see what happens in... a universe of my own
-making :-)
+This implementation uses the standard Runge-Kutta method for integrating
+orbits. It's not state of the art, but it's a big improvement over the simpler
+Euler method.
 
-So: The following code 'sprays' some 'planets' randomly, around a sun,
-inside a 900x600 window (the values are below, change them at will).
-Afterwards, it applies a very simple set of laws:
-
-- Gravity, inversely proportional to the square of the distance, and linearly
-  proportional to the product of the two masses
-- Elastic collissions of two objects if they are close enough to touch: a
-  merged object is then created, that maintains the momentum (mass*velocity)
-  and the mass of the two merged ones.
-- This updated version of the code is using the RK4 solution of the velocity/
-  acceleration differential equation, and is in fact based on the excellent
-  blog of Glenn Fiedler (http://gafferongames.com)
-
-Use the numeric keypad's +/- to zoom in/out, and press SPACE to toggle
-showing/hiding the orbits trace.
-
-Blog post at:
+The original version of this file was created by Thanassis Tsiodras. Blog
+post at:
 
     http://users.softlab.ntua.gr/~ttsiod/gravity.html
     http://ttsiodras.github.com/gravity.html
-
-Thanassis Tsiodras
-ttsiodras@gmail.com
 """
 
-import sys
 import math
-import pygame
 import random
-from collections import defaultdict
+import sys
+
+from PIL import Image
 
 # The window size
 WIDTH, HEIGHT = 900, 600
@@ -96,6 +74,9 @@ class Planet:
         self._r = 1.5
         self.setMassFromRadius()
         self._merged = False
+        color = [0, 255, random.randint(0, 255)]
+        random.shuffle(color)
+        self._color = tuple(color)
 
     def __repr__(self):
         return repr(self._st)
@@ -159,19 +140,7 @@ class Planet:
 
 
 def main():
-    pygame.init()
-    win=pygame.display.set_mode((WIDTH, HEIGHT))
-
-    keysPressed = defaultdict(bool)
-
-    def ScanKeyboard():
-        while True:
-            # Update the keysPressed state:
-            evt = pygame.event.poll()
-            if evt.type == pygame.NOEVENT:
-                break
-            elif evt.type in [pygame.KEYDOWN, pygame.KEYUP]:
-                keysPressed[evt.key] = evt.type == pygame.KEYDOWN
+    image = Image.new('RGB', (WIDTH, HEIGHT), (0, 0, 0))
 
     global g_listOfPlanets, PLANETS
     if len(sys.argv) == 2:
@@ -201,30 +170,19 @@ def main():
         if planetsTouch(p, sun):
             p._merged = True  # ignore planets inside the sun
 
-    # Zoom factor, changed at runtime via the '+' and '-' numeric keypad keys
-    zoom = 1.0
     # t and dt are unused in this simulation, but are in general, 
     # parameters of engine (acceleration may depend on them)
     t, dt = 0., 1.
 
-    bClearScreen = True
-    pygame.display.set_caption('Gravity simulation (SPACE: show orbits, '
-                               'keypad +/- : zoom in/out)')
-    while True:
+    for frame_number in range(1000):
         t += dt
-        pygame.display.flip()
-        if bClearScreen:  # Show orbits or not?
-            win.fill((0, 0, 0))
-        win.lock()
         for p in g_listOfPlanets:
-            if not p._merged:  # for planets that have not been merged, draw a
-                # circle based on their radius, but take zoom factor into account
-                pygame.draw.circle(win, (255, 255, 255),
-                    (int(WIDTHD2+zoom*WIDTHD2*(p._st._x-WIDTHD2)/WIDTHD2),
-                     int(HEIGHTD2+zoom*HEIGHTD2*(p._st._y-HEIGHTD2)/HEIGHTD2)),
-                     int(p._r*zoom), 0)
-        win.unlock()
-        ScanKeyboard()
+            if not p._merged:
+                x = int(WIDTHD2+WIDTHD2*(p._st._x-WIDTHD2)/WIDTHD2)
+                y = int(HEIGHTD2+HEIGHTD2*(p._st._y-HEIGHTD2)/HEIGHTD2)
+                if x < 0 or y < 0 or x >= WIDTH or y >= HEIGHT:
+                    continue
+                image.putpixel((x, y), p._color)
 
         # Update all planets' positions and speeds (should normally double
         # buffer the list of planet data, but turns out this is good enough :-)
@@ -254,27 +212,8 @@ def main():
                     p1._m += p2._m  # maintain the mass (just add them)
                     p1.setRadiusFromMass()  # new mass --> new radius
                     p1._st._vx, p1._st._vy = newvx, newvy
+    image.save('orbits.png')
 
-        # update zoom factor (numeric keypad +/- keys)
-        if keysPressed[pygame.K_KP_PLUS]:
-            zoom /= 0.99
-        if keysPressed[pygame.K_KP_MINUS]:
-            zoom /= 1.01
-        if keysPressed[pygame.K_ESCAPE]:
-            break
-        if keysPressed[pygame.K_SPACE]:
-            while keysPressed[pygame.K_SPACE]:
-                ScanKeyboard()
-            bClearScreen = not bClearScreen
-            verb = "show" if bClearScreen else "hide"
-            pygame.display.set_caption(
-                'Gravity simulation (SPACE: '
-                '%s orbits, keypad +/- : zoom in/out)' % verb)
 
 if __name__ == "__main__":
-    try:
-        import psyco
-        psyco.profile()
-    except:
-        print 'Psyco not found, ignoring it'
     main()
