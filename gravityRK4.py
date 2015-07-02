@@ -18,17 +18,6 @@ import sys
 
 from PIL import Image
 
-# The window size
-WIDTH, HEIGHT = 900, 600
-WIDTHD2, HEIGHTD2 = WIDTH/2., HEIGHT/2.
-
-# The gravity coefficient - it's my universe, I can pick whatever I want :-)
-GRAVITYSTRENGTH = 1.e4
-
-# The global list of planets
-planets = []
-
-
 class State:
     """Class representing position and velocity."""
     def __init__(self, x, y, vx, vy):
@@ -62,43 +51,44 @@ class Planet:
     def __repr__(self):
         return repr(self._st)
 
-    def acceleration(self, state, unused_t):
+    def acceleration(self, state, unused_t, other_planets, G):
         """Calculate acceleration caused by other planets on this one."""
         ax = 0.0
         ay = 0.0
-        for p in planets:
+        for p in other_planets:
             if p is self:
                 continue
             dx = p._st._x - state._x
             dy = p._st._y - state._y
             dsq = dx*dx + dy*dy
             dr = math.sqrt(dsq)
-            force = GRAVITYSTRENGTH*self._m*p._m/dsq if dsq>1e-10 else 0.
+            force = G*self._m*p._m/dsq if dsq>1e-10 else 0.
             ax += force*dx/dr
             ay += force*dy/dr
         return (ax, ay)
 
-    def initialDerivative(self, state, t):
+    def initialDerivative(self, state, t, other_planets, G):
         """Part of Runge-Kutta method."""
-        ax, ay = self.acceleration(state, t)
+        ax, ay = self.acceleration(state, t, other_planets, G)
         return Derivative(state._vx, state._vy, ax, ay)
 
-    def nextDerivative(self, initialState, derivative, t, dt):
+    def nextDerivative(self, initialState, derivative, t, dt,
+                       other_planets, G):
         """Part of Runge-Kutta method."""
         state = State(0., 0., 0., 0.)
         state._x = initialState._x + derivative._dx*dt
         state._y = initialState._y + derivative._dy*dt
         state._vx = initialState._vx + derivative._dvx*dt
         state._vy = initialState._vy + derivative._dvy*dt
-        ax, ay = self.acceleration(state, t+dt)
+        ax, ay = self.acceleration(state, t+dt, other_planets, G)
         return Derivative(state._vx, state._vy, ax, ay)
 
-    def updatePlanet(self, t, dt):
+    def update(self, t, dt, other_planets, G):
         """Runge-Kutta 4th order solution to update planet's pos/vel."""
-        a = self.initialDerivative(self._st, t)
-        b = self.nextDerivative(self._st, a, t, dt*0.5)
-        c = self.nextDerivative(self._st, b, t, dt*0.5)
-        d = self.nextDerivative(self._st, c, t, dt)
+        a = self.initialDerivative(self._st, t, other_planets, G)
+        b = self.nextDerivative(self._st, a, t, dt*0.5, other_planets, G)
+        c = self.nextDerivative(self._st, b, t, dt*0.5, other_planets, G)
+        d = self.nextDerivative(self._st, c, t, dt, other_planets, G)
         dxdt = 1.0/6.0 * (a._dx + 2.0*(b._dx + c._dx) + d._dx)
         dydt = 1.0/6.0 * (a._dy + 2.0*(b._dy + c._dy) + d._dy)
         dvxdt = 1.0/6.0 * (a._dvx + 2.0*(b._dvx + c._dvx) + d._dvx)
@@ -109,47 +99,41 @@ class Planet:
         self._st._vy += dvydt*dt
 
 
+class NBodySimulation:
+    """Represents an n-body simulation consisting of several Planets."""
+    def __init__(self, G):
+        self.G = G
+        self.planets = []
+        self.t = 0
+
+    def tick(self, dt):
+        self.t += dt
+        for p in self.planets:
+            p.update(self.t, dt, self.planets, self.G)
+
+    def run(self, max_t, dt, image_filename, image_size, plot_radius):
+        if image_filename:
+            image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
+        while self.t < max_t:
+            self.tick(dt)
+            if image_filename:
+                for p in self.planets:
+                    x = int(0.5 * image_size * (p._st._x / plot_radius + 1))
+                    y = int(0.5 * image_size * (p._st._y / plot_radius + 1))
+                    if x < 0 or y < 0 or x >= image_size or y >= image_size:
+                        continue
+                    image.putpixel((x, y), p._color)
+        if image_filename:
+            image.save(image_filename)
+
+
 def main():
-    image = Image.new('RGB', (WIDTH, HEIGHT), (0, 0, 0))
-
-    global planets
-
-    # And God said: Let there be lights in the firmament of the heavens...
-    planets = []
-    for i in xrange(0, 10):
-        sr = 1.5
-        planets.append(Planet(random.uniform(0, WIDTH),
-                                      random.uniform(0, HEIGHT),
-                                      random.uniform(-sr, sr),
-                                      random.uniform(-sr, sr), 0.014137))
-
-    sun = Planet(WIDTHD2, HEIGHTD2, 0, 0, 5)
-    planets.append(sun)
-    for p in planets:
-        if p is sun:
-            continue
-
-    # t and dt are unused in this simulation, but are in general, 
-    # parameters of engine (acceleration may depend on them)
-    t, dt = 0., 1.
-
-    for frame_number in range(1000):
-        t += dt
-        for p in planets:
-            x = int(WIDTHD2+WIDTHD2*(p._st._x-WIDTHD2)/WIDTHD2)
-            y = int(HEIGHTD2+HEIGHTD2*(p._st._y-HEIGHTD2)/HEIGHTD2)
-            if x < 0 or y < 0 or x >= WIDTH or y >= HEIGHT:
-                continue
-            image.putpixel((x, y), p._color)
-
-        # Update all planets' positions and speeds (should normally double
-        # buffer the list of planet data, but turns out this is good enough :-)
-        for p in planets:
-            if p is sun:
-                continue
-            p.updatePlanet(t, dt)
-
-    image.save('orbits.png')
+    simulation = NBodySimulation(G=1.e4)
+    simulation.planets.append(Planet(300, -40, 2, 0, 0.5))
+    simulation.planets.append(Planet(300, 40, -2, 0, 0.5))
+    simulation.planets.append(Planet(-300, -40, 2, 0, 0.5))
+    simulation.planets.append(Planet(-300, 40, -2, 0, 0.5))
+    simulation.run(1000, 0.1, 'orbits.png', 600, 400)
 
 
 if __name__ == "__main__":
