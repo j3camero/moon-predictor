@@ -14,7 +14,6 @@ post at:
 
 import math
 import random
-import sys
 
 from PIL import Image
 
@@ -88,14 +87,17 @@ class NBodySimulation:
         self.t = 0
 
     def AddPlanet(self, x, y, vx, vy, mass):
+        """"Shortcut method for adding a planet to the simulation."""
         self.planets.append(Planet(x, y, vx, vy, mass))
 
     def Tick(self, dt):
+        """"Advance the simulation by one tick."""
         self.t += dt
         for p in self.planets:
             p.Update(dt, self)
 
-    def Run(self, max_t, dt, image_filename, image_size, plot_radius):
+    def Run(self, max_t, dt, image_filename=None, image_size=0, plot_radius=0):
+        """Advance the simulation to the specified time max_t."""
         if image_filename:
             image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
         while self.t < max_t:
