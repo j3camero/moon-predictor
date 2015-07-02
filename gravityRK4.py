@@ -22,18 +22,11 @@ from PIL import Image
 WIDTH, HEIGHT = 900, 600
 WIDTHD2, HEIGHTD2 = WIDTH/2., HEIGHT/2.
 
-# The number of simulated planets
-PLANETS = 30
-
-# The density of the planets - used to calculate their mass
-# from their volume (i.e. via their radius)
-DENSITY = 0.001
-
 # The gravity coefficient - it's my universe, I can pick whatever I want :-)
 GRAVITYSTRENGTH = 1.e4
 
 # The global list of planets
-g_listOfPlanets = []
+planets = []
 
 
 class State:
@@ -57,23 +50,11 @@ class Derivative:
 
 
 class Planet:
-    """Class representing a planet. The "_st" member is an instance of "State",
-    carrying the planet's position and velocity - while the "_m" and "_r"
-    members represents the planet's mass and radius."""
-    def __init__(self):
-        if PLANETS == 1:
-            # A nice example of a planet orbiting around our sun :-)
-            self._st = State(150, 300, 0, 2)
-        else:
-            # otherwise pick a random position and velocity
-            self._st = State(
-               float(random.randint(0, WIDTH)),
-               float(random.randint(0, HEIGHT)),
-               float(random.randint(0, 300)/100.)-1.5,
-               float(random.randint(0, 300)/100.)-1.5)
-        self._r = 1.5
-        self.setMassFromRadius()
-        self._merged = False
+    """Class representing a planet."""
+    def __init__(self, x, y, vx, vy, mass):
+        self._st = State(x, y, vx, vy)
+        self._m = mass
+        # Generate a random bright color.
         color = [0, 255, random.randint(0, 255)]
         random.shuffle(color)
         self._color = tuple(color)
@@ -85,15 +66,14 @@ class Planet:
         """Calculate acceleration caused by other planets on this one."""
         ax = 0.0
         ay = 0.0
-        for p in g_listOfPlanets:
-            if p is self or p._merged:
-                continue  # ignore ourselves and merged planets
+        for p in planets:
+            if p is self:
+                continue
             dx = p._st._x - state._x
             dy = p._st._y - state._y
-            dsq = dx*dx + dy*dy  # distance squared
-            dr = math.sqrt(dsq)  # distance
+            dsq = dx*dx + dy*dy
+            dr = math.sqrt(dsq)
             force = GRAVITYSTRENGTH*self._m*p._m/dsq if dsq>1e-10 else 0.
-            # Accumulate acceleration...
             ax += force*dx/dr
             ay += force*dy/dr
         return (ax, ay)
@@ -128,47 +108,26 @@ class Planet:
         self._st._vx += dvxdt*dt
         self._st._vy += dvydt*dt
 
-    def setMassFromRadius(self):
-        """From _r, set _m: The volume is (4/3)*Pi*(r^3)..."""
-        self._m = DENSITY*4.*math.pi*(self._r**3.)/3.
-
-    def setRadiusFromMass(self):
-        """Reversing the setMassFromRadius formula, to calculate radius from
-        mass (used after merging of two planets - mass is added, and new
-        radius is calculated from this)"""
-        self._r = (3.*self._m/(DENSITY*4.*math.pi))**(0.3333)
-
 
 def main():
     image = Image.new('RGB', (WIDTH, HEIGHT), (0, 0, 0))
 
-    global g_listOfPlanets, PLANETS
-    if len(sys.argv) == 2:
-        PLANETS = int(sys.argv[1])
+    global planets
 
     # And God said: Let there be lights in the firmament of the heavens...
-    g_listOfPlanets = []
-    for i in xrange(0, PLANETS):
-        g_listOfPlanets.append(Planet())
+    planets = []
+    for i in xrange(0, 10):
+        sr = 1.5
+        planets.append(Planet(random.uniform(0, WIDTH),
+                                      random.uniform(0, HEIGHT),
+                                      random.uniform(-sr, sr),
+                                      random.uniform(-sr, sr), 0.014137))
 
-    def planetsTouch(p1, p2):
-        dx = p1._st._x - p2._st._x
-        dy = p1._st._y - p2._st._y
-        dsq = dx*dx + dy*dy
-        dr = math.sqrt(dsq)
-        return dr<=(p1._r + p2._r)
-
-    sun = Planet()
-    sun._st._x, sun._st._y = WIDTHD2, HEIGHTD2
-    sun._st._vx = sun._st._vy = 0.
-    sun._m *= 1000
-    sun.setRadiusFromMass()
-    g_listOfPlanets.append(sun)
-    for p in g_listOfPlanets:
+    sun = Planet(WIDTHD2, HEIGHTD2, 0, 0, 5)
+    planets.append(sun)
+    for p in planets:
         if p is sun:
             continue
-        if planetsTouch(p, sun):
-            p._merged = True  # ignore planets inside the sun
 
     # t and dt are unused in this simulation, but are in general, 
     # parameters of engine (acceleration may depend on them)
@@ -176,42 +135,20 @@ def main():
 
     for frame_number in range(1000):
         t += dt
-        for p in g_listOfPlanets:
-            if not p._merged:
-                x = int(WIDTHD2+WIDTHD2*(p._st._x-WIDTHD2)/WIDTHD2)
-                y = int(HEIGHTD2+HEIGHTD2*(p._st._y-HEIGHTD2)/HEIGHTD2)
-                if x < 0 or y < 0 or x >= WIDTH or y >= HEIGHT:
-                    continue
-                image.putpixel((x, y), p._color)
+        for p in planets:
+            x = int(WIDTHD2+WIDTHD2*(p._st._x-WIDTHD2)/WIDTHD2)
+            y = int(HEIGHTD2+HEIGHTD2*(p._st._y-HEIGHTD2)/HEIGHTD2)
+            if x < 0 or y < 0 or x >= WIDTH or y >= HEIGHT:
+                continue
+            image.putpixel((x, y), p._color)
 
         # Update all planets' positions and speeds (should normally double
         # buffer the list of planet data, but turns out this is good enough :-)
-        for p in g_listOfPlanets:
-            if p._merged or p is sun:
+        for p in planets:
+            if p is sun:
                 continue
-            # Calculate the contributions of all the others to its acceleration
-            # (via the gravity force) and update its position and velocity
             p.updatePlanet(t, dt)
 
-        # See if we should merge the ones that are close enough to touch,
-        # using elastic collisions (conservation of total momentum)
-        for p1 in g_listOfPlanets:
-            if p1._merged:
-                continue
-            for p2 in g_listOfPlanets:
-                if p1 is p2 or p2._merged:
-                    continue
-                if planetsTouch(p1, p2):
-                    if p1._m < p2._m:
-                        p1, p2 = p2, p1  # p1 is the biggest one (mass-wise)
-                    p2._merged = True
-                    if p1 is sun:
-                        continue  # No-one can move the sun :-)
-                    newvx = (p1._st._vx*p1._m+p2._st._vx*p2._m)/(p1._m+p2._m)
-                    newvy = (p1._st._vy*p1._m+p2._st._vy*p2._m)/(p1._m+p2._m)
-                    p1._m += p2._m  # maintain the mass (just add them)
-                    p1.setRadiusFromMass()  # new mass --> new radius
-                    p1._st._vx, p1._st._vy = newvx, newvy
     image.save('orbits.png')
 
 
