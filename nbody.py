@@ -16,6 +16,8 @@ import random
 
 from PIL import Image
 
+from progress import ProgressBar
+
 class Ray:
     """Class representing position and velocity."""
     def __init__(self, x, y, vx, vy):
@@ -94,12 +96,15 @@ class NBodySimulation:
         for p in self.planets:
             p.Update(dt, self)
 
-    def Run(self, max_t, dt, image_filename=None, image_size=0, plot_radius=0):
+    def Run(self, max_t, dt, image_filename=None, image_size=0, plot_radius=0,
+            eta_report_frequency=0):
         """Advance the simulation to the specified time max_t."""
         if image_filename:
             image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
+        progress = ProgressBar(5)
         while self.t < max_t:
             self.Tick(dt)
+            progress.MaybeReport(float(self.t) / max_t)
             if image_filename:
                 for p in self.planets:
                     x = int(0.5 * image_size * (p.state.x / plot_radius + 1))
