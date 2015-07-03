@@ -1,4 +1,4 @@
-from gravityRK4 import NBodySimulation
+from nbody import NBodySimulation
 
 sim = NBodySimulation(G=1.e4)
 sim.AddPlanet(300, -40, 2, 0, 0.5)

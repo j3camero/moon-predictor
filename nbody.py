@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """Routines for running an n-body simulation.
 
 This implementation uses the standard Runge-Kutta method for integrating
@@ -43,32 +42,31 @@ class Planet:
             dy = p.state.y - state.y
             dsq = dx*dx + dy*dy
             dr = math.sqrt(dsq)
-            force = sim.G*self.m*p.m/dsq if dsq>1e-10 else 0.
-            ax += force*dx/dr
-            ay += force*dy/dr
+            acceleration = sim.G*p.m/dsq if dsq>1e-10 else 0.
+            ax += acceleration * dx / dr
+            ay += acceleration * dy / dr
         return (ax, ay)
 
-    def InitialDerivative(self, state, sim):
+    def InitialDerivative(self, sim):
         """Part of Runge-Kutta method."""
-        ax, ay = self.Acceleration(state, sim)
-        return Ray(state.vx, state.vy, ax, ay)
+        ax, ay = self.Acceleration(self.state, sim)
+        return Ray(self.state.vx, self.state.vy, ax, ay)
 
-    def NextDerivative(self, initial_state, derivative, dt, sim):
+    def NextDerivative(self, derivative, dt, sim):
         """Part of Runge-Kutta method."""
-        state = Ray(0, 0, 0, 0)
-        state.x = initial_state.x + derivative.x*dt
-        state.y = initial_state.y + derivative.y*dt
-        state.vx = initial_state.vx + derivative.vx*dt
-        state.vy = initial_state.vy + derivative.vy*dt
+        state = Ray(self.state.x + derivative.x*dt,
+                    self.state.y + derivative.y*dt,
+                    self.state.vx + derivative.vx*dt,
+                    self.state.vy + derivative.vy*dt)
         ax, ay = self.Acceleration(state, sim)
         return Ray(state.vx, state.vy, ax, ay)
 
     def Update(self, dt, sim):
         """Runge-Kutta 4th order solution to update planet's pos/vel."""
-        a = self.InitialDerivative(self.state, sim)
-        b = self.NextDerivative(self.state, a, dt*0.5, sim)
-        c = self.NextDerivative(self.state, b, dt*0.5, sim)
-        d = self.NextDerivative(self.state, c, dt, sim)
+        a = self.InitialDerivative(sim)
+        b = self.NextDerivative(a, dt*0.5, sim)
+        c = self.NextDerivative(b, dt*0.5, sim)
+        d = self.NextDerivative(c, dt, sim)
         dxdt = 1.0/6.0 * (a.x + 2.0*(b.x + c.x) + d.x)
         dydt = 1.0/6.0 * (a.y + 2.0*(b.y + c.y) + d.y)
         dvxdt = 1.0/6.0 * (a.vx + 2.0*(b.vx + c.vx) + d.vx)
@@ -91,7 +89,7 @@ class NBodySimulation:
         self.planets.append(Planet(x, y, vx, vy, mass))
 
     def Tick(self, dt):
-        """"Advance the simulation by one tick."""
+        """Advance the simulation by one tick."""
         self.t += dt
         for p in self.planets:
             p.Update(dt, self)
@@ -111,3 +109,27 @@ class NBodySimulation:
                     image.putpixel((x, y), p.color)
         if image_filename:
             image.save(image_filename)
+
+    def Normalize(self):
+        """Centers the system at (0,0) and zeroes the average momentum.
+
+        Only run this once at the beginning of the simulation. Running it
+        periodically might cause really strange artifacts in the simulation.
+        """
+        barycenter = Ray(0, 0, 0, 0)
+        total_mass = 0
+        for p in self.planets:
+            barycenter.x += p.state.x * p.m
+            barycenter.y += p.state.y * p.m
+            barycenter.vx += p.state.vx * p.m
+            barycenter.vy += p.state.vy * p.m
+            total_mass += p.m
+        barycenter.x /= total_mass
+        barycenter.y /= total_mass
+        barycenter.vx /= total_mass
+        barycenter.vy /= total_mass
+        for p in self.planets:
+            p.state.x -= barycenter.x
+            p.state.y -= barycenter.y
+            p.state.vx -= barycenter.vx
+            p.state.vy -= barycenter.vy
