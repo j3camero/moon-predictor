@@ -25,13 +25,14 @@ class Ray:
 
 class Planet:
     """Class representing a planet in an n-body simulation."""
-    def __init__(self, x, y, vx, vy, mass):
+    def __init__(self, x, y, vx, vy, mass, name=''):
         self.state = Ray(x, y, vx, vy)
         self.m = mass
         # Generate a random bright color.
         color = [0, 255, random.randint(0, 255)]
         random.shuffle(color)
         self.color = tuple(color)
+        self.name = name
 
     def Acceleration(self, state, sim):
         """Calculate acceleration caused by other planets on this one."""
@@ -78,6 +79,11 @@ class Planet:
         self.state.vx += dvxdt*dt
         self.state.vy += dvydt*dt
 
+    def Speed(self):
+        vx = self.state.vx
+        vy = self.state.vy
+        return math.sqrt(vx*vx + vy*vy)
+
 
 class NBodySimulation:
     """Represents an n-body simulation consisting of several Planets."""
@@ -86,9 +92,9 @@ class NBodySimulation:
         self.planets = []
         self.t = 0
 
-    def AddPlanet(self, x, y, vx, vy, mass):
+    def AddPlanet(self, x, y, vx, vy, mass, name=''):
         """"Shortcut method for adding a planet to the simulation."""
-        self.planets.append(Planet(x, y, vx, vy, mass))
+        self.planets.append(Planet(x, y, vx, vy, mass, name))
 
     def Tick(self, dt):
         """Advance the simulation by one tick."""
