@@ -83,6 +83,7 @@ class Planet:
         self.state.vy += update.vy * dt
 
     def Speed(self):
+        """Calculates the instantaneous speed of the planet."""
         vx = self.state.vx
         vy = self.state.vy
         return math.sqrt(vx*vx + vy*vy)
@@ -109,6 +110,25 @@ class NBodySimulation:
         for p, u in zip(self.planets, updates):
             p.ApplyUpdate(u, dt)
 
+    def PlotPlanets(self, image, image_size, plot_radius):
+        """Plots the positions of the planets onto an existing PIL image.
+
+        Call this function for many ticks re-using the same image and the
+        planets leave traces, plotting their paths over time.
+        """
+        for p in self.planets:
+            x = int(0.5 * image_size * (p.state.x / plot_radius + 1))
+            y = int(0.5 * image_size * (p.state.y / plot_radius + 1))
+            if x < 0 or y < 0 or x >= image_size or y >= image_size:
+                continue
+            image.putpixel((x, y), p.color)
+
+    def LogOppositionsAndConjunctions(self, dt):
+        """Append one line to the end of a text file for each detected event.
+        """
+        for p in self.planets:
+            pass
+
     def Run(self, max_t, dt, image_filename=None, image_size=0, plot_radius=0,
             eta_report_frequency=0):
         """Advance the simulation to the specified time max_t."""
@@ -117,16 +137,24 @@ class NBodySimulation:
         progress = ProgressBar(eta_report_frequency)
         while self.t < max_t:
             self.Tick(dt)
-            progress.MaybeReport(float(self.t) / max_t)
             if image_filename:
-                for p in self.planets:
-                    x = int(0.5 * image_size * (p.state.x / plot_radius + 1))
-                    y = int(0.5 * image_size * (p.state.y / plot_radius + 1))
-                    if x < 0 or y < 0 or x >= image_size or y >= image_size:
-                        continue
-                    image.putpixel((x, y), p.color)
+                self.PlotPlanets(image, image_size, plot_radius)
+            self.LogOppositionsAndConjunctions(dt)
+            progress.MaybeReport(float(self.t) / max_t)
         if image_filename:
             image.save(image_filename)
+
+    def Barycenter(self):
+        """Calculate the barycenter of the system, and also total momentum."""
+        x, y, vx, vy, m = 0, 0, 0, 0, 0
+        for p in self.planets:
+            x += p.state.x * p.m
+            y += p.state.y * p.m
+            vx += p.state.vx * p.m
+            vy += p.state.vy * p.m
+            m += p.m
+        s = 1.0 / m
+        return Ray(x * s, y * s, vx * s, vy * s)
 
     def Normalize(self):
         """Centers the system at (0,0) and zeroes the average momentum.
@@ -134,20 +162,9 @@ class NBodySimulation:
         Only run this once at the beginning of the simulation. Running it
         periodically might cause really strange artifacts in the simulation.
         """
-        barycenter = Ray(0, 0, 0, 0)
-        total_mass = 0
+        b = self.Barycenter()
         for p in self.planets:
-            barycenter.x += p.state.x * p.m
-            barycenter.y += p.state.y * p.m
-            barycenter.vx += p.state.vx * p.m
-            barycenter.vy += p.state.vy * p.m
-            total_mass += p.m
-        barycenter.x /= total_mass
-        barycenter.y /= total_mass
-        barycenter.vx /= total_mass
-        barycenter.vy /= total_mass
-        for p in self.planets:
-            p.state.x -= barycenter.x
-            p.state.y -= barycenter.y
-            p.state.vx -= barycenter.vx
-            p.state.vy -= barycenter.vy
+            p.state.x -= b.x
+            p.state.y -= b.y
+            p.state.vx -= b.vx
+            p.state.vy -= b.vy
