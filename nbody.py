@@ -64,20 +64,23 @@ class Planet:
         ax, ay = self.Acceleration(state, sim)
         return Ray(state.vx, state.vy, ax, ay)
 
-    def Update(self, dt, sim):
+    def CalculateUpdate(self, sim, dt):
         """Runge-Kutta 4th order solution to update planet's pos/vel."""
         a = self.InitialDerivative(sim)
         b = self.NextDerivative(a, dt*0.5, sim)
         c = self.NextDerivative(b, dt*0.5, sim)
         d = self.NextDerivative(c, dt, sim)
-        dxdt = 1.0/6.0 * (a.x + 2.0*(b.x + c.x) + d.x)
-        dydt = 1.0/6.0 * (a.y + 2.0*(b.y + c.y) + d.y)
-        dvxdt = 1.0/6.0 * (a.vx + 2.0*(b.vx + c.vx) + d.vx)
-        dvydt = 1.0/6.0 * (a.vy + 2.0*(b.vy + c.vy) + d.vy)
-        self.state.x += dxdt*dt
-        self.state.y += dydt*dt
-        self.state.vx += dvxdt*dt
-        self.state.vy += dvydt*dt
+        dx = 1.0/6.0 * (a.x + 2.0*(b.x + c.x) + d.x)
+        dy = 1.0/6.0 * (a.y + 2.0*(b.y + c.y) + d.y)
+        dvx = 1.0/6.0 * (a.vx + 2.0*(b.vx + c.vx) + d.vx)
+        dvy = 1.0/6.0 * (a.vy + 2.0*(b.vy + c.vy) + d.vy)
+        return Ray(dx, dy, dvx, dvy)
+
+    def ApplyUpdate(self, update, dt):
+        self.state.x += update.x * dt
+        self.state.y += update.y * dt
+        self.state.vx += update.vx * dt
+        self.state.vy += update.vy * dt
 
     def Speed(self):
         vx = self.state.vx
@@ -99,15 +102,19 @@ class NBodySimulation:
     def Tick(self, dt):
         """Advance the simulation by one tick."""
         self.t += dt
+        updates = []
         for p in self.planets:
-            p.Update(dt, self)
+            u = p.CalculateUpdate(self, dt)
+            updates.append(u)
+        for p, u in zip(self.planets, updates):
+            p.ApplyUpdate(u, dt)
 
     def Run(self, max_t, dt, image_filename=None, image_size=0, plot_radius=0,
             eta_report_frequency=0):
         """Advance the simulation to the specified time max_t."""
         if image_filename:
             image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
-        progress = ProgressBar(5)
+        progress = ProgressBar(eta_report_frequency)
         while self.t < max_t:
             self.Tick(dt)
             progress.MaybeReport(float(self.t) / max_t)
