@@ -18,6 +18,8 @@ from PIL import Image
 
 from progress import ProgressBar
 
+pi = math.pi
+
 class Ray:
     """Class representing position and velocity."""
     def __init__(self, x, y, vx, vy):
@@ -126,8 +128,41 @@ class NBodySimulation:
     def LogOppositionsAndConjunctions(self, dt):
         """Append one line to the end of a text file for each detected event.
         """
+        b = self.Barycenter()
+        angular = []
         for p in self.planets:
-            pass
+            dx = p.state.x - b.x
+            dy = p.state.y - b.y
+            r2 = dx * dx + dy * dy
+            dot = p.state.vx * (-dy) + p.state.vy * dx
+            angle = math.atan2(dy, dx)
+            angular_speed = dot / r2
+            pair = (angle, angular_speed)
+            angular.append(pair)
+        n = len(self.planets)
+        for i in range(n):
+            p1 = self.planets[i]
+            a1, v1 = angular[i]
+            for j in range(i + 1, n):
+                p2 = self.planets[j]
+                a2, v2 = angular[j]
+                angle_rate = v2 - v1
+                angle_diff = a2 - a1
+                if math.fabs(angle_rate) > 1.e-20:
+                    # Transform angle to the range [-pi,+pi].
+                    angle_diff -= 2 * pi * int((angle_diff + pi) / (2 * pi))
+                    conjunction = angle_diff / angle_rate
+                    if conjunction <= 0 and conjunction >= -dt:
+                        con_angle = a2 + conjunction * v2
+                        con_time = self.t + conjunction
+                        print 'CON', p1.name, p2.name, con_angle, con_time
+                    # Transform angle to the range [0,2*pi].
+                    angle_diff -= 2 * pi * int(angle_diff / (2 * pi))
+                    opposition = (angle_diff - pi) / angle_rate
+                    if opposition <= 0 and opposition >= -dt:
+                        opp_angle = a2 + opposition * v2
+                        opp_time = self.t + opposition
+                        print 'OPP', p1.name, p2.name, opp_angle, opp_time
 
     def Run(self, max_t, dt, image_filename=None, image_size=0, plot_radius=0,
             eta_report_frequency=0):
