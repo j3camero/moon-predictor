@@ -163,12 +163,17 @@ class NBodySimulation:
             pair = (angle, angular_speed)
             angular.append(pair)
         # Compare each pair of planets to detect conjunction and/or opposition.
+        non_resonators = ['Pluto', 'Charon', 'Jupiter']
         n = len(self.planets)
         for i in range(n):
             p1 = self.planets[i]
+            if p1.name in non_resonators:
+                continue
             a1, v1 = angular[i]
             for j in range(i + 1, n):
                 p2 = self.planets[j]
+                if p2.name in non_resonators:
+                    continue
                 a2, v2 = angular[j]
                 angle_rate = v2 - v1
                 angle_diff = a2 - a1
