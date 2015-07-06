@@ -20,15 +20,15 @@ from progress import ProgressBar
 
 pi = math.pi
 
-class Ray:
-    """Class representing position and velocity."""
+class Ray(object):
+    """Represents position and velocity."""
     def __init__(self, x, y, vx, vy):
         self.x, self.y, self.vx, self.vy = x, y, vx, vy
 
-class Planet:
-    """Class representing a planet in an n-body simulation."""
+class Planet(Ray):
+    """Represents a planet in an n-body simulation."""
     def __init__(self, x, y, vx, vy, mass, name=''):
-        self.state = Ray(x, y, vx, vy)
+        super(Planet, self).__init__(x, y, vx, vy)
         self.m = mass
         # Generate a random bright color.
         color = [0, 255, random.randint(0, 255)]
@@ -43,8 +43,8 @@ class Planet:
         for p in sim.planets:
             if p is self:
                 continue
-            dx = p.state.x - state.x
-            dy = p.state.y - state.y
+            dx = p.x - state.x
+            dy = p.y - state.y
             dsq = dx*dx + dy*dy
             dr = math.sqrt(dsq)
             acceleration = sim.G*p.m/dsq if dsq>1e-10 else 0.
@@ -54,15 +54,15 @@ class Planet:
 
     def InitialDerivative(self, sim):
         """Part of Runge-Kutta method."""
-        ax, ay = self.Acceleration(self.state, sim)
-        return Ray(self.state.vx, self.state.vy, ax, ay)
+        ax, ay = self.Acceleration(self, sim)
+        return Ray(self.vx, self.vy, ax, ay)
 
     def NextDerivative(self, derivative, dt, sim):
         """Part of Runge-Kutta method."""
-        state = Ray(self.state.x + derivative.x*dt,
-                    self.state.y + derivative.y*dt,
-                    self.state.vx + derivative.vx*dt,
-                    self.state.vy + derivative.vy*dt)
+        state = Ray(self.x + derivative.x*dt,
+                    self.y + derivative.y*dt,
+                    self.vx + derivative.vx*dt,
+                    self.vy + derivative.vy*dt)
         ax, ay = self.Acceleration(state, sim)
         return Ray(state.vx, state.vy, ax, ay)
 
@@ -79,16 +79,14 @@ class Planet:
         return Ray(dx, dy, dvx, dvy)
 
     def ApplyUpdate(self, update, dt):
-        self.state.x += update.x * dt
-        self.state.y += update.y * dt
-        self.state.vx += update.vx * dt
-        self.state.vy += update.vy * dt
+        self.x += update.x * dt
+        self.y += update.y * dt
+        self.vx += update.vx * dt
+        self.vy += update.vy * dt
 
     def Speed(self):
         """Calculates the instantaneous speed of the planet."""
-        vx = self.state.vx
-        vy = self.state.vy
-        return math.sqrt(vx*vx + vy*vy)
+        return math.sqrt(self.vx**2 + self.vy**2)
 
 
 class NBodySimulation:
@@ -119,8 +117,8 @@ class NBodySimulation:
         planets leave traces, plotting their paths over time.
         """
         for p in self.planets:
-            x = int(0.5 * image_size * (p.state.x / plot_radius + 1))
-            y = int(0.5 * image_size * (p.state.y / plot_radius + 1))
+            x = int(0.5 * image_size * (p.x / plot_radius + 1))
+            y = int(0.5 * image_size * (p.y / plot_radius + 1))
             if x < 0 or y < 0 or x >= image_size or y >= image_size:
                 continue
             image.putpixel((x, y), p.color)
@@ -131,10 +129,10 @@ class NBodySimulation:
         b = self.Barycenter()
         angular = []
         for p in self.planets:
-            dx = p.state.x - b.x
-            dy = p.state.y - b.y
+            dx = p.x - b.x
+            dy = p.y - b.y
             r2 = dx * dx + dy * dy
-            dot = p.state.vx * (-dy) + p.state.vy * dx
+            dot = p.vx * (-dy) + p.vy * dx
             angle = math.atan2(dy, dx)
             angular_speed = dot / r2
             pair = (angle, angular_speed)
@@ -183,10 +181,10 @@ class NBodySimulation:
         """Calculate the barycenter of the system, and also total momentum."""
         x, y, vx, vy, m = 0, 0, 0, 0, 0
         for p in self.planets:
-            x += p.state.x * p.m
-            y += p.state.y * p.m
-            vx += p.state.vx * p.m
-            vy += p.state.vy * p.m
+            x += p.x * p.m
+            y += p.y * p.m
+            vx += p.vx * p.m
+            vy += p.vy * p.m
             m += p.m
         s = 1.0 / m
         return Ray(x * s, y * s, vx * s, vy * s)
@@ -199,7 +197,7 @@ class NBodySimulation:
         """
         b = self.Barycenter()
         for p in self.planets:
-            p.state.x -= b.x
-            p.state.y -= b.y
-            p.state.vx -= b.vx
-            p.state.vy -= b.vy
+            p.x -= b.x
+            p.y -= b.y
+            p.vx -= b.vx
+            p.vy -= b.vy
