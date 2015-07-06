@@ -12,9 +12,11 @@ post at:
 """
 
 import math
+import os
 import random
+import string
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from progress import ProgressBar
 
@@ -89,13 +91,8 @@ class Planet(Ray):
         return math.sqrt(self.vx**2 + self.vy**2)
 
 
-def ClearFile(filename):
-    f = open(filename, 'w')
-    f.close()
-
-def AppendLineToFile(filename, line):
-    with open(filename, 'a') as f:
-        f.write(line + '\n')
+def RandomWord(length):
+   return ''.join(random.choice(string.lowercase) for i in range(length))
 
 
 class NBodySimulation:
@@ -122,8 +119,9 @@ class NBodySimulation:
     def PlotPlanets(self, image, image_size, plot_radius):
         """Plots the positions of the planets onto an existing PIL image.
 
-        Call this function for many ticks re-using the same image and the
-        planets leave traces, plotting their paths over time.
+        Each planet is plotted by a single pixel. Call this function for
+        many ticks re-using the same image and the planets leave traces,
+        plotting their paths over time.
         """
         for p in self.planets:
             x = int(0.5 * image_size * (p.x / plot_radius + 1))
@@ -132,11 +130,29 @@ class NBodySimulation:
                 continue
             image.putpixel((x, y), p.color)
 
-    def LogOppositionsAndConjunctions(self, log_filename, dt):
-        """Append one line to the end of a text file for each detected event.
+    def DrawCirclePlanets(self, image, image_size, plot_radius, planet_radius):
+        """Plots the positions of the planets onto an existing PIL image.
+
+        The planets are drawn as large colored circles.
+        """
+        for p in self.planets:
+            x = int(0.5 * image_size * (p.x / plot_radius + 1))
+            y = int(0.5 * image_size * (p.y / plot_radius + 1))
+            if x < 0 or y < 0 or x >= image_size or y >= image_size:
+                continue
+            draw = ImageDraw.Draw(image)
+            r = planet_radius
+            draw.ellipse((x-r, y-r, x+r, y+r), fill=p.color)
+
+    def LogOppositionsAndConjunctions(self, log_dir, index_file, traces_image,
+                                      image_size, plot_radius, dt):
+        """Detect conjunctions and oppositions and write them to an HTML log.
+
+        Also output handy images to help visualize each event.
         """
         b = self.Barycenter()
         angular = []
+        # Calculate angle and angular speed for each planet w.r.t. barycenter.
         for p in self.planets:
             dx = p.x - b.x
             dy = p.y - b.y
@@ -146,6 +162,7 @@ class NBodySimulation:
             angular_speed = dot / r2
             pair = (angle, angular_speed)
             angular.append(pair)
+        # Compare each pair of planets to detect conjunction and/or opposition.
         n = len(self.planets)
         for i in range(n):
             p1 = self.planets[i]
@@ -163,38 +180,63 @@ class NBodySimulation:
                 if conjunction <= 0 and conjunction >= -dt:
                     con_angle = a2 + conjunction * v2
                     con_time = self.t + conjunction
-                    csv_fields = ['CON', p1.name, p2.name, con_angle,
-                                  con_time]
-                    log_line = ','.join(str(field) for field in csv_fields)
-                    AppendLineToFile(log_filename, log_line)
+                    debug_image = traces_image.copy()
+                    self.DrawCirclePlanets(debug_image, image_size,
+                                           plot_radius, 10)
+                    image_filename = RandomWord(6) + '.png'
+                    debug_image.save(os.path.join(log_dir, image_filename))
+                    html = '<tr><td>CON</td>'
+                    html += '<td>%s</td><td>%s</td>' % (p1.name, p2.name)
+                    html += '<td>%f</td><td>%f</td>' % (con_angle, con_time)
+                    html += '<td><img src=%s></td>' % image_filename
+                    html += '</tr>\n'
+                    index_file.write(html)
                 # Detect oppositions. Transform angle to the range [0,2*pi].
                 angle_diff -= 2 * pi * int(angle_diff / (2 * pi))
                 opposition = -(angle_diff - pi) / angle_rate
                 if opposition <= 0 and opposition >= -dt:
                     opp_angle = a2 + opposition * v2
                     opp_time = self.t + opposition
-                    csv_fields = ['OPP', p1.name, p2.name, opp_angle,
-                                  opp_time]
-                    log_line = ','.join(str(field) for field in csv_fields)
-                    AppendLineToFile(log_filename, log_line)
+                    debug_image = traces_image.copy()
+                    self.DrawCirclePlanets(debug_image, image_size,
+                                           plot_radius, 10)
+                    image_filename = RandomWord(6) + '.png'
+                    debug_image.save(os.path.join(log_dir, image_filename))
+                    html = '<tr><td>OPP</td>'
+                    html += '<td>%s</td><td>%s</td>' % (p1.name, p2.name)
+                    html += '<td>%f</td><td>%f</td>' % (opp_angle, opp_time)
+                    html += '<td><img src=%s></td>' % image_filename
+                    html += '</tr>\n'
+                    index_file.write(html)
 
     def Run(self, max_t, dt, image_filename=None, image_size=0, plot_radius=0,
-            eta_report_frequency=0, oppconj_filename=None):
+            eta_report_frequency=0, oppconj_dir=None):
         """Advance the simulation to the specified time max_t."""
         if image_filename:
             image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
-        if oppconj_filename:
-            ClearFile(oppconj_filename)
+        if oppconj_dir:
+            try:
+                os.mkdir(oppconj_dir)
+            except:
+                pass
+            index_filename = os.path.join(oppconj_dir, 'index.html')
+            index_file = open(index_filename, 'w')
+            index_file.write('<table>\n')
         progress = ProgressBar(eta_report_frequency)
         while self.t < max_t:
             self.Tick(dt)
             if image_filename:
                 self.PlotPlanets(image, image_size, plot_radius)
-            if oppconj_filename:
-                self.LogOppositionsAndConjunctions(oppconj_filename, dt)
+            if oppconj_dir:
+                self.LogOppositionsAndConjunctions(oppconj_dir, index_file,
+                                                   image, image_size,
+                                                   plot_radius, dt)
             progress.MaybeReport(float(self.t) / max_t)
         if image_filename:
             image.save(image_filename)
+        if oppconj_dir:
+            index_file.write('</table>\n')
+            index_file.close()
 
     def Barycenter(self):
         """Calculate the barycenter of the system, and also total momentum."""
