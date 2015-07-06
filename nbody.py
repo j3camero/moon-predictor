@@ -89,6 +89,15 @@ class Planet(Ray):
         return math.sqrt(self.vx**2 + self.vy**2)
 
 
+def ClearFile(filename):
+    f = open(filename, 'w')
+    f.close()
+
+def AppendLineToFile(filename, line):
+    with open(filename, 'a') as f:
+        f.write(line + '\n')
+
+
 class NBodySimulation:
     """Represents an n-body simulation consisting of several Planets."""
     def __init__(self, G):
@@ -123,7 +132,7 @@ class NBodySimulation:
                 continue
             image.putpixel((x, y), p.color)
 
-    def LogOppositionsAndConjunctions(self, dt):
+    def LogOppositionsAndConjunctions(self, log_filename, dt):
         """Append one line to the end of a text file for each detected event.
         """
         b = self.Barycenter()
@@ -146,33 +155,43 @@ class NBodySimulation:
                 a2, v2 = angular[j]
                 angle_rate = v2 - v1
                 angle_diff = a2 - a1
-                if math.fabs(angle_rate) > 1.e-20:
-                    # Transform angle to the range [-pi,+pi].
-                    angle_diff -= 2 * pi * int((angle_diff + pi) / (2 * pi))
-                    conjunction = angle_diff / angle_rate
-                    if conjunction <= 0 and conjunction >= -dt:
-                        con_angle = a2 + conjunction * v2
-                        con_time = self.t + conjunction
-                        print 'CON', p1.name, p2.name, con_angle, con_time
-                    # Transform angle to the range [0,2*pi].
-                    angle_diff -= 2 * pi * int(angle_diff / (2 * pi))
-                    opposition = (angle_diff - pi) / angle_rate
-                    if opposition <= 0 and opposition >= -dt:
-                        opp_angle = a2 + opposition * v2
-                        opp_time = self.t + opposition
-                        print 'OPP', p1.name, p2.name, opp_angle, opp_time
+                if math.fabs(angle_rate) < 1.e-20:
+                    continue
+                # Detect conjunctions. Transform angle to the range [-pi,+pi].
+                angle_diff -= 2 * pi * int((angle_diff + pi) / (2 * pi))
+                conjunction = -angle_diff / angle_rate
+                if conjunction <= 0 and conjunction >= -dt:
+                    con_angle = a2 + conjunction * v2
+                    con_time = self.t + conjunction
+                    csv_fields = ['CON', p1.name, p2.name, con_angle,
+                                  con_time]
+                    log_line = ','.join(str(field) for field in csv_fields)
+                    AppendLineToFile(log_filename, log_line)
+                # Detect oppositions. Transform angle to the range [0,2*pi].
+                angle_diff -= 2 * pi * int(angle_diff / (2 * pi))
+                opposition = -(angle_diff - pi) / angle_rate
+                if opposition <= 0 and opposition >= -dt:
+                    opp_angle = a2 + opposition * v2
+                    opp_time = self.t + opposition
+                    csv_fields = ['OPP', p1.name, p2.name, opp_angle,
+                                  opp_time]
+                    log_line = ','.join(str(field) for field in csv_fields)
+                    AppendLineToFile(log_filename, log_line)
 
     def Run(self, max_t, dt, image_filename=None, image_size=0, plot_radius=0,
-            eta_report_frequency=0):
+            eta_report_frequency=0, oppconj_filename=None):
         """Advance the simulation to the specified time max_t."""
         if image_filename:
             image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
+        if oppconj_filename:
+            ClearFile(oppconj_filename)
         progress = ProgressBar(eta_report_frequency)
         while self.t < max_t:
             self.Tick(dt)
             if image_filename:
                 self.PlotPlanets(image, image_size, plot_radius)
-            self.LogOppositionsAndConjunctions(dt)
+            if oppconj_filename:
+                self.LogOppositionsAndConjunctions(oppconj_filename, dt)
             progress.MaybeReport(float(self.t) / max_t)
         if image_filename:
             image.save(image_filename)
