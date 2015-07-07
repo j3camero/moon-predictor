@@ -12,6 +12,7 @@ post at:
 """
 
 import math
+from math import pi
 import os
 import random
 import string
@@ -20,15 +21,13 @@ from PIL import Image, ImageDraw
 
 from progress import ProgressBar
 
-pi = math.pi
-
 class Ray(object):
-    """Represents position and velocity."""
+    """A position and velocity."""
     def __init__(self, x, y, vx, vy):
         self.x, self.y, self.vx, self.vy = x, y, vx, vy
 
 class Planet(Ray):
-    """Represents a planet in an n-body simulation."""
+    """A planet in an n-body simulation."""
     def __init__(self, x, y, vx, vy, mass, name=''):
         super(Planet, self).__init__(x, y, vx, vy)
         self.m = mass
@@ -91,8 +90,41 @@ class Planet(Ray):
         return math.sqrt(self.vx**2 + self.vy**2)
 
 
+def PolarToCartesian(r, angle):
+    """Converts a radius and angle in radians to (x,y) coords."""
+    return r * math.cos(angle), r * math.sin(angle)
+
+
+class RailPlanet(Planet):
+    """A special planet that follows a circular closed-form orbit."""
+    def __init__(self, orbital_radius, orbital_period, phase, mass, name):
+        self.orbital_radius = orbital_radius
+        self.orbital_period = orbital_period
+        self.orbital_speed = 2 * pi * orbital_radius / orbital_period
+        self.phase = phase
+        s = self.PositionAndVelocityAtTime(0)
+        super(RailPlanet, self).__init__(s.x, s.y, s.vx, s.vy, mass, name)
+
+    def PositionAndVelocityAtTime(self, t):
+        orbit_count = float(t) / self.orbital_period + self.phase
+        angle = orbit_count * 2 * pi
+        x, y = PolarToCartesian(self.orbital_radius, angle)
+        vx, vy = PolarToCartesian(self.orbital_speed, angle + 0.5 * pi)
+        return Ray(x, y, vx, vy)
+
+    def CalculateUpdate(self, sim, unused_dt):
+        return self.PositionAndVelocityAtTime(sim.t)
+
+    def ApplyUpdate(self, update, unused_dt):
+        self.x = update.x
+        self.y = update.y
+        self.vx = update.vx
+        self.vy = update.vy
+
+
 def RandomWord(length):
-   return ''.join(random.choice(string.lowercase) for i in range(length))
+    """Generate a random string of lowercase letters."""
+    return ''.join(random.choice(string.lowercase) for i in range(length))
 
 
 class NBodySimulation:
@@ -103,8 +135,14 @@ class NBodySimulation:
         self.t = 0
 
     def AddPlanet(self, x, y, vx, vy, mass, name=''):
-        """"Shortcut method for adding a planet to the simulation."""
+        """Shortcut method for adding a planet to the simulation."""
         self.planets.append(Planet(x, y, vx, vy, mass, name))
+
+    def AddRailPlanet(self, orbital_radius, orbital_period, phase,
+                      mass, name=''):
+        """Shortcut method for adding a rail planet to the simulation."""
+        self.planets.append(RailPlanet(orbital_radius, orbital_period, phase,
+                                       mass, name))
 
     def Tick(self, dt):
         """Advance the simulation by one tick."""
