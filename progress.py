@@ -1,4 +1,5 @@
 import datetime
+import sys
 import time
 
 class ProgressBar:
@@ -24,5 +25,6 @@ class ProgressBar:
             return
         if time.time() - self.last_report_time > self.report_frequency:
             percent = '%.2f %%' % (progress * 100)
-            print percent, self.GetEtaAsString(progress)
+            sys.stderr.write(percent + ' ' +
+                             self.GetEtaAsString(progress) + '\n')
             self.last_report_time = time.time()

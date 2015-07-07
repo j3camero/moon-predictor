@@ -305,3 +305,25 @@ class NBodySimulation:
             p.y -= b.y
             p.vx -= b.vx
             p.vy -= b.vy
+
+    def MoonSpread(self, names):
+        """Maximum angle separating two moons from conjunction or opposition.
+        """
+        filtered_planets = [p for p in self.planets if p.name in names]
+        n = len(filtered_planets)
+        moon_spread = pi
+        b = self.Barycenter()
+        for i in range(n):
+            p1 = filtered_planets[i]
+            x1 = p1.x - b.x
+            y1 = p1.y - b.y
+            r1 = math.sqrt(x1*x1 + y1*y1)
+            for j in range(i + 1, n):
+                p2 = filtered_planets[j]
+                x2 = p2.x - b.x
+                y2 = p2.y - b.y
+                r2 = math.sqrt(x2*x2 + y2*y2)
+                cos_angle = (x1 * x2 + y1 * y2) / (r1 * r2)
+                angle = math.acos(abs(cos_angle))
+                moon_spread = min(moon_spread, angle)
+        return moon_spread
