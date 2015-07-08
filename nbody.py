@@ -145,26 +145,29 @@ class NBodySimulation:
         self.planets.append(RailPlanet(orbital_radius, orbital_period, phase,
                                        mass, name))
 
-    def AddParticle(self, orbital_radius, phase):
+    def AddParticle(self, orbital_radius, phase, speed_multiplier=1):
         """Add a low-mass particle to the simulation."""
         x, y = PolarToCartesian(orbital_radius, phase)
         orbital_speed = math.sqrt(self.G * self.TotalMass() / orbital_radius)
+        orbital_speed *= speed_multiplier
         vx, vy = PolarToCartesian(orbital_speed, phase + 0.5 * pi)
         p = Planet(x, y, vx, vy, 1)
         p.color = (255, 255, 255)
         self.particles.append(p)
 
-    def AddRandomParticle(self, max_orbital_radius):
+    def AddRandomParticle(self, lo, hi, speed_range=0):
         """Add a particle in a random circular orbit."""
         # Generate random radius using sqrt to get a uniform density.
-        orbital_radius = max_orbital_radius * math.sqrt(random.random())
+        #orbital_radius = max_orbital_radius * math.sqrt(random.random())
+        orbital_radius = random.random() * (hi - lo) + lo
         phase = random.random() * 2 * pi
-        self.AddParticle(orbital_radius, phase)
+        kick = random.uniform(1 - speed_range, 1 + speed_range)
+        self.AddParticle(orbital_radius, phase, kick)
 
-    def AddRandomParticles(self, num_particles, max_orbital_radius):
+    def AddRandomParticles(self, num_particles, lo, hi, speed_range=0):
         """Add particles in random circular orbits."""
         for i in range(num_particles):
-            self.AddRandomParticle(max_orbital_radius)
+            self.AddRandomParticle(lo, hi, speed_range)
 
     def TotalMass(self):
         """The total mass of the planets in this simulation."""
@@ -303,9 +306,9 @@ class NBodySimulation:
 
     def Run(self, max_t, dt, deletion_distance, image_filename=None,
             image_size=0, plot_radius=0, eta_report_frequency=0,
-            oppconj_dir=None, snapshot_dir=None):
+            oppconj_dir=None, snapshot_dir=None, snapshot_period=86400):
         """Advance the simulation to the specified time max_t."""
-        if image_filename:
+        if image_filename or snapshot_dir:
             image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
         if oppconj_dir:
             try:
@@ -320,7 +323,6 @@ class NBodySimulation:
                 os.mkdir(snapshot_dir)
             except:
                 pass
-        snapshot_period = 86400
         next_snapshot = 0
         snapshot_count = 0
         progress = ProgressBar(eta_report_frequency)
@@ -334,6 +336,8 @@ class NBodySimulation:
                                                    plot_radius, dt)
             if snapshot_dir and self.t >= next_snapshot:
                 snapshot_image = image.copy()
+                self.DrawCirclePlanets(snapshot_image, image_size,
+                                       plot_radius, 5)
                 self.PlotParticles(snapshot_image, image_size, plot_radius)
                 filename = os.path.join(snapshot_dir,
                                         '%06d.png' % snapshot_count)
