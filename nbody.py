@@ -132,6 +132,7 @@ class NBodySimulation:
     def __init__(self, G):
         self.G = G
         self.planets = []
+        self.particles = []
         self.t = 0
 
     def AddPlanet(self, x, y, vx, vy, mass, name=''):
@@ -144,15 +145,63 @@ class NBodySimulation:
         self.planets.append(RailPlanet(orbital_radius, orbital_period, phase,
                                        mass, name))
 
-    def Tick(self, dt):
-        """Advance the simulation by one tick."""
+    def AddParticle(self, orbital_radius, phase):
+        """Add a low-mass particle to the simulation."""
+        x, y = PolarToCartesian(orbital_radius, phase)
+        orbital_speed = math.sqrt(self.G * self.TotalMass() / orbital_radius)
+        vx, vy = PolarToCartesian(orbital_speed, phase + 0.5 * pi)
+        p = Planet(x, y, vx, vy, 1)
+        p.color = (255, 255, 255)
+        self.particles.append(p)
+
+    def AddRandomParticle(self, max_orbital_radius):
+        """Add a particle in a random circular orbit."""
+        # Generate random radius using sqrt to get a uniform density.
+        orbital_radius = max_orbital_radius * math.sqrt(random.random())
+        phase = random.random() * 2 * pi
+        self.AddParticle(orbital_radius, phase)
+
+    def AddRandomParticles(self, num_particles, max_orbital_radius):
+        """Add particles in random circular orbits."""
+        for i in range(num_particles):
+            self.AddRandomParticle(max_orbital_radius)
+
+    def TotalMass(self):
+        """The total mass of the planets in this simulation."""
+        total = 0
+        for p in self.planets:
+            total += p.m
+        return total
+
+    def Tick(self, dt, deletion_distance):
+        """Advance the simulation by one time step."""
         self.t += dt
+        # Calculate and update particles in one pass since they have
+        # negligible effect on larger planets.
+        remaining_particles = []
+        for p in self.particles:
+            u = p.CalculateUpdate(self, dt)
+            p.ApplyUpdate(u, dt)
+            if p.x**2 + p.y**2 < deletion_distance**2:
+                remaining_particles.append(p)
+        self.particles = remaining_particles
+        # Calculate and update planets in two passes so they're
+        # order-independent.
         updates = []
         for p in self.planets:
             u = p.CalculateUpdate(self, dt)
             updates.append(u)
         for p, u in zip(self.planets, updates):
             p.ApplyUpdate(u, dt)
+
+    def PlotParticles(self, image, image_size, plot_radius):
+        """Plots the positions of the particles onto an existing PIL image."""
+        for p in self.particles:
+            x = int(0.5 * image_size * (p.x / plot_radius + 1))
+            y = int(0.5 * image_size * (p.y / plot_radius + 1))
+            if x < 0 or y < 0 or x >= image_size or y >= image_size:
+                continue
+            image.putpixel((x, y), p.color)
 
     def PlotPlanets(self, image, image_size, plot_radius):
         """Plots the positions of the planets onto an existing PIL image.
@@ -252,8 +301,9 @@ class NBodySimulation:
                     html += '</tr>\n'
                     index_file.write(html)
 
-    def Run(self, max_t, dt, image_filename=None, image_size=0, plot_radius=0,
-            eta_report_frequency=0, oppconj_dir=None):
+    def Run(self, max_t, dt, deletion_distance, image_filename=None,
+            image_size=0, plot_radius=0, eta_report_frequency=0,
+            oppconj_dir=None, snapshot_dir=None):
         """Advance the simulation to the specified time max_t."""
         if image_filename:
             image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
@@ -265,17 +315,34 @@ class NBodySimulation:
             index_filename = os.path.join(oppconj_dir, 'index.html')
             index_file = open(index_filename, 'w')
             index_file.write('<table>\n')
+        if snapshot_dir:
+            try:
+                os.mkdir(snapshot_dir)
+            except:
+                pass
+        snapshot_period = 86400
+        next_snapshot = 0
+        snapshot_count = 0
         progress = ProgressBar(eta_report_frequency)
         while self.t < max_t:
-            self.Tick(dt)
+            self.Tick(dt, deletion_distance)
             if image_filename:
                 self.PlotPlanets(image, image_size, plot_radius)
             if oppconj_dir:
                 self.LogOppositionsAndConjunctions(oppconj_dir, index_file,
                                                    image, image_size,
                                                    plot_radius, dt)
+            if snapshot_dir and self.t >= next_snapshot:
+                snapshot_image = image.copy()
+                self.PlotParticles(snapshot_image, image_size, plot_radius)
+                filename = os.path.join(snapshot_dir,
+                                        '%06d.png' % snapshot_count)
+                snapshot_image.save(filename)
+                snapshot_count += 1
+                next_snapshot += snapshot_period
             progress.MaybeReport(float(self.t) / max_t)
         if image_filename:
+            self.PlotParticles(image, image_size, plot_radius)
             image.save(image_filename)
         if oppconj_dir:
             index_file.write('</table>\n')
