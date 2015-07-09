@@ -122,6 +122,24 @@ class RailPlanet(Planet):
         self.vy = update.vy
 
 
+class EllipticalOrbit(object):
+    """A parameterization of an idealized elliptical two-body orbit."""
+    def __init__(self, semi_major_axis, eccentricity):
+        self.semi_major_axis = semi_major_axis
+        self.eccentricity = eccentricity
+
+    @staticmethod
+    def CalculateFromMotion(ray, gm):
+        r = math.sqrt(ray.x**2 + ray.y**2)
+        v2 = ray.vx**2 + ray.vy**2
+        # Calculate the semi-major axis using vis-visa equation.
+        a = gm * r / (2 * gm - r * v2)
+        # Angular momentum (not sure)
+        h = ray.x * ray.vy - ray.y * ray.vx
+        ecc = math.sqrt(1 - h**2 / (gm * a))
+        return EllipticalOrbit(a, ecc)
+
+
 def RandomWord(length):
     """Generate a random string of lowercase letters."""
     return ''.join(random.choice(string.lowercase) for i in range(length))
@@ -306,7 +324,8 @@ class NBodySimulation:
 
     def Run(self, max_t, dt, deletion_distance, image_filename=None,
             image_size=0, plot_radius=0, eta_report_frequency=0,
-            oppconj_dir=None, snapshot_dir=None, snapshot_period=86400):
+            oppconj_dir=None, snapshot_dir=None, snapshot_period=86400,
+            particle_csv_filename=None):
         """Advance the simulation to the specified time max_t."""
         if image_filename or snapshot_dir:
             image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
@@ -351,6 +370,8 @@ class NBodySimulation:
         if oppconj_dir:
             index_file.write('</table>\n')
             index_file.close()
+        if particle_csv_filename:
+            self.ParticleOrbitsToCsv(particle_csv_filename)
 
     def Barycenter(self):
         """Calculate the barycenter of the system, and also total momentum."""
@@ -398,3 +419,24 @@ class NBodySimulation:
                 angle = math.acos(abs(cos_angle))
                 moon_spread = min(moon_spread, angle)
         return moon_spread
+
+    def CalculateParticleOrbits(self):
+        """Calculates the idealized elliptical orbital parameters.
+
+        This is not actually used for physics purposes. It's just for stats
+        and analysis. Mainly, looking for clusters of objects with similar
+        orbital characteristics.
+        """
+        gm = self.TotalMass() * self.G
+        return [EllipticalOrbit.CalculateFromMotion(p, gm)
+                for p in self.particles]
+
+    def ParticleOrbitsToCsv(self, csv_filename):
+        with open(csv_filename, 'w') as csv_file:
+            csv_file.write('semi_major_axis,eccentricity\n')
+            orbits = self.CalculateParticleOrbits()
+            for orbit in orbits:
+                if orbit.eccentricity >= 1:
+                    continue
+                line = '%f,%f\n' % (orbit.semi_major_axis, orbit.eccentricity)
+                csv_file.write(line)
