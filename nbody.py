@@ -252,92 +252,12 @@ class NBodySimulation:
             r = planet_radius
             draw.ellipse((x-r, y-r, x+r, y+r), fill=p.color)
 
-    def LogOppositionsAndConjunctions(self, log_dir, index_file, traces_image,
-                                      image_size, plot_radius, dt):
-        """Detect conjunctions and oppositions and write them to an HTML log.
-
-        Also output handy images to help visualize each event.
-        """
-        b = self.Barycenter()
-        angular = []
-        # Calculate angle and angular speed for each planet w.r.t. barycenter.
-        for p in self.planets:
-            dx = p.x - b.x
-            dy = p.y - b.y
-            r2 = dx * dx + dy * dy
-            dot = p.vx * (-dy) + p.vy * dx
-            angle = math.atan2(dy, dx)
-            angular_speed = dot / r2
-            pair = (angle, angular_speed)
-            angular.append(pair)
-        # Compare each pair of planets to detect conjunction and/or opposition.
-        non_resonators = ['Pluto', 'Charon', 'Jupiter']
-        n = len(self.planets)
-        for i in range(n):
-            p1 = self.planets[i]
-            if p1.name in non_resonators:
-                continue
-            a1, v1 = angular[i]
-            for j in range(i + 1, n):
-                p2 = self.planets[j]
-                if p2.name in non_resonators:
-                    continue
-                a2, v2 = angular[j]
-                angle_rate = v2 - v1
-                angle_diff = a2 - a1
-                if math.fabs(angle_rate) < 1.e-20:
-                    continue
-                # Detect conjunctions. Transform angle to the range [-pi,+pi].
-                angle_diff -= 2 * pi * int((angle_diff + pi) / (2 * pi))
-                conjunction = -angle_diff / angle_rate
-                if conjunction <= 0 and conjunction >= -dt:
-                    con_angle = a2 + conjunction * v2
-                    con_time = self.t + conjunction
-                    debug_image = traces_image.copy()
-                    self.DrawCirclePlanets(debug_image, image_size,
-                                           plot_radius, 10)
-                    image_filename = RandomWord(6) + '.png'
-                    debug_image.save(os.path.join(log_dir, image_filename))
-                    html = '<tr><td>CON</td>'
-                    html += '<td>%s</td><td>%s</td>' % (p1.name, p2.name)
-                    html += '<td>%f</td><td>%f</td>' % (con_angle, con_time)
-                    html += '<td><img src=%s></td>' % image_filename
-                    html += '</tr>\n'
-                    index_file.write(html)
-                # Detect oppositions. Transform angle to the range [0,2*pi].
-                angle_diff -= 2 * pi * int(angle_diff / (2 * pi))
-                opposition = -(angle_diff - pi) / angle_rate
-                if opposition <= 0 and opposition >= -dt:
-                    opp_angle = a2 + opposition * v2
-                    opp_time = self.t + opposition
-                    debug_image = traces_image.copy()
-                    self.DrawCirclePlanets(debug_image, image_size,
-                                           plot_radius, 10)
-                    image_filename = RandomWord(6) + '.png'
-                    debug_image.save(os.path.join(log_dir, image_filename))
-                    html = '<tr><td>OPP</td>'
-                    html += '<td>%s</td><td>%s</td>' % (p1.name, p2.name)
-                    html += '<td>%f</td><td>%f</td>' % (opp_angle, opp_time)
-                    html += '<td><img src=%s></td>' % image_filename
-                    html += '</tr>\n'
-                    index_file.write(html)
-
-    def Run(self, max_t, dt, deletion_distance, image_filename=None,
-            image_size=0, plot_radius=0, eta_report_frequency=0,
-            oppconj_dir=None, snapshot_dir=None, snapshot_period=86400,
-            particle_csv_filename=None):
+    def Run(self, max_t, dt, deletion_distance, image_size=0, plot_radius=0,
+            snapshot_dir=None, snapshot_period=86400,
+            particle_csv_filename=None, eta_report_frequency=1):
         """Advance the simulation to the specified time max_t."""
-        if image_filename or snapshot_dir:
-            image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
-        if oppconj_dir:
-            try:
-                os.mkdir(oppconj_dir)
-            except:
-                pass
-            index_filename = os.path.join(oppconj_dir, 'index.html')
-            index_file = open(index_filename, 'w')
-            index_file.write('<table>\n')
         if snapshot_dir:
+            image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
             try:
                 os.mkdir(snapshot_dir)
             except:
@@ -347,29 +267,21 @@ class NBodySimulation:
         progress = ProgressBar(eta_report_frequency)
         while self.t < max_t:
             self.Tick(dt, deletion_distance)
-            if image_filename:
-                self.PlotPlanets(image, image_size, plot_radius)
-            if oppconj_dir:
-                self.LogOppositionsAndConjunctions(oppconj_dir, index_file,
-                                                   image, image_size,
-                                                   plot_radius, dt)
-            if snapshot_dir and self.t >= next_snapshot:
-                snapshot_image = image.copy()
-                self.DrawCirclePlanets(snapshot_image, image_size,
-                                       plot_radius, 5)
-                self.PlotParticles(snapshot_image, image_size, plot_radius)
-                filename = os.path.join(snapshot_dir,
-                                        '%06d.png' % snapshot_count)
-                snapshot_image.save(filename)
-                snapshot_count += 1
-                next_snapshot += snapshot_period
             progress.MaybeReport(float(self.t) / max_t)
-        if image_filename:
-            self.PlotParticles(image, image_size, plot_radius)
-            image.save(image_filename)
-        if oppconj_dir:
-            index_file.write('</table>\n')
-            index_file.close()
+            if not snapshot_dir:
+                continue
+            self.PlotPlanets(image, image_size, plot_radius)
+            if self.t < next_snapshot:
+                continue
+            snapshot_image = image.copy()
+            self.DrawCirclePlanets(snapshot_image, image_size,
+                                   plot_radius, 5)
+            self.PlotParticles(snapshot_image, image_size, plot_radius)
+            filename = os.path.join(snapshot_dir,
+                                    '%06d.png' % snapshot_count)
+            snapshot_image.save(filename)
+            snapshot_count += 1
+            next_snapshot += snapshot_period
         if particle_csv_filename:
             self.ParticleOrbitsToCsv(particle_csv_filename)
 
@@ -397,28 +309,6 @@ class NBodySimulation:
             p.y -= b.y
             p.vx -= b.vx
             p.vy -= b.vy
-
-    def MoonSpread(self, names):
-        """Maximum angle separating two moons from conjunction or opposition.
-        """
-        filtered_planets = [p for p in self.planets if p.name in names]
-        n = len(filtered_planets)
-        moon_spread = pi
-        b = self.Barycenter()
-        for i in range(n):
-            p1 = filtered_planets[i]
-            x1 = p1.x - b.x
-            y1 = p1.y - b.y
-            r1 = math.sqrt(x1*x1 + y1*y1)
-            for j in range(i + 1, n):
-                p2 = filtered_planets[j]
-                x2 = p2.x - b.x
-                y2 = p2.y - b.y
-                r2 = math.sqrt(x2*x2 + y2*y2)
-                cos_angle = (x1 * x2 + y1 * y2) / (r1 * r2)
-                angle = math.acos(abs(cos_angle))
-                moon_spread = min(moon_spread, angle)
-        return moon_spread
 
     def CalculateParticleOrbits(self):
         """Calculates the idealized elliptical orbital parameters.
