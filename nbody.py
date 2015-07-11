@@ -144,6 +144,13 @@ def RandomWord(length):
     """Generate a random string of lowercase letters."""
     return ''.join(random.choice(string.lowercase) for i in range(length))
 
+def Mkdir(d):
+    """Shortcut method for creating a directory that silences warnings."""
+    try:
+        os.mkdir(d)
+    except:
+        pass
+
 
 class NBodySimulation:
     """Represents an n-body simulation consisting of several Planets."""
@@ -163,29 +170,21 @@ class NBodySimulation:
         self.planets.append(RailPlanet(orbital_radius, orbital_period, phase,
                                        mass, name))
 
-    def AddParticle(self, orbital_radius, phase, speed_multiplier=1):
+    def AddParticle(self, orbital_radius, phase):
         """Add a low-mass particle to the simulation."""
         x, y = PolarToCartesian(orbital_radius, phase)
         orbital_speed = math.sqrt(self.G * self.TotalMass() / orbital_radius)
-        orbital_speed *= speed_multiplier
         vx, vy = PolarToCartesian(orbital_speed, phase + 0.5 * pi)
         p = Planet(x, y, vx, vy, 1)
         p.color = (255, 255, 255)
         self.particles.append(p)
 
-    def AddRandomParticle(self, lo, hi, speed_range=0):
-        """Add a particle in a random circular orbit."""
-        # Generate random radius using sqrt to get a uniform density.
-        #orbital_radius = max_orbital_radius * math.sqrt(random.random())
-        orbital_radius = random.random() * (hi - lo) + lo
-        phase = random.random() * 2 * pi
-        kick = random.uniform(1 - speed_range, 1 + speed_range)
-        self.AddParticle(orbital_radius, phase, kick)
-
-    def AddRandomParticles(self, num_particles, lo, hi, speed_range=0):
+    def AddRandomParticles(self, num_particles, lo, hi):
         """Add particles in random circular orbits."""
         for i in range(num_particles):
-            self.AddRandomParticle(lo, hi, speed_range)
+            orbital_radius = float(i) * (hi - lo) / num_particles + lo
+            phase = random.random() * 2 * pi
+            self.AddParticle(orbital_radius, phase)
 
     def TotalMass(self):
         """The total mass of the planets in this simulation."""
@@ -258,10 +257,7 @@ class NBodySimulation:
         """Advance the simulation to the specified time max_t."""
         if snapshot_dir:
             image = Image.new('RGB', (image_size, image_size), (0, 0, 0))
-            try:
-                os.mkdir(snapshot_dir)
-            except:
-                pass
+            Mkdir(snapshot_dir)
         next_snapshot = 0
         snapshot_count = 0
         progress = ProgressBar(eta_report_frequency)
@@ -273,13 +269,21 @@ class NBodySimulation:
             self.PlotPlanets(image, image_size, plot_radius)
             if self.t < next_snapshot:
                 continue
-            snapshot_image = image.copy()
-            self.DrawCirclePlanets(snapshot_image, image_size,
-                                   plot_radius, 5)
-            self.PlotParticles(snapshot_image, image_size, plot_radius)
+            #total_height = int(1.5 * image_size)
+            #snapshot_image = Image.new('RGB', (image_size, total_height))
+            #snapshot_image.paste(image, (0, 0))
+            #self.DrawCirclePlanets(snapshot_image, image_size,
+            #                       plot_radius, 5)
+            #self.PlotParticles(snapshot_image, image_size, plot_radius)
+            orbit_plot = self.DrawOrbitPlot(image_size, int(0.5 * image_size),
+                                            plot_radius)
+            #snapshot_image.paste(orbit_plot, (0, image_size))
             filename = os.path.join(snapshot_dir,
                                     '%06d.png' % snapshot_count)
-            snapshot_image.save(filename)
+            #snapshot_image.save(filename)
+            orbit_plot.save(filename)
+            if particle_csv_filename:
+                self.ParticleOrbitsToCsv(particle_csv_filename)
             snapshot_count += 1
             next_snapshot += snapshot_period
         if particle_csv_filename:
@@ -318,8 +322,13 @@ class NBodySimulation:
         orbital characteristics.
         """
         gm = self.TotalMass() * self.G
-        return [EllipticalOrbit.CalculateFromMotion(p, gm)
-                for p in self.particles]
+        b = self.Barycenter()
+        orbits = []
+        for p in self.particles:
+            #ray = Ray(p.x - b.x, p.y - b.y, p.vx - b.vx, p.vy - b.vy)
+            orbit = EllipticalOrbit.CalculateFromMotion(p, gm)
+            orbits.append(orbit)
+        return orbits
 
     def ParticleOrbitsToCsv(self, csv_filename):
         with open(csv_filename, 'w') as csv_file:
@@ -330,3 +339,23 @@ class NBodySimulation:
                     continue
                 line = '%f,%f\n' % (orbit.semi_major_axis, orbit.eccentricity)
                 csv_file.write(line)
+
+    def DrawOrbitPlot(self, width, height, plot_radius):
+        plot = Image.new('RGB', (width, height), (0, 0, 0))
+        draw = ImageDraw.Draw(plot)
+        b = self.Barycenter()
+        x_mult = (width - 1) / plot_radius
+        for p in self.planets:
+            dx = b.x - p.x
+            dy = b.y - p.y
+            r = math.sqrt(dx**2 + dy**2)
+            x = r * x_mult
+            draw.line([x, 0, x, height - 1], fill=p.color)
+        orbits = self.CalculateParticleOrbits()
+        for p, orbit in zip(self.particles, orbits):
+            if orbit.semi_major_axis > plot_radius or orbit.eccentricity > 1:
+                continue
+            x = orbit.semi_major_axis * x_mult
+            y = (1 - orbit.eccentricity) * (height - 1)
+            plot.putpixel((int(x), int(y)), p.color)
+        return plot
